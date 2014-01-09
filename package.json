@@ -1,0 +1,25 @@
+{
+  "name": "passport-cas",
+  "version": "0.0.1",
+  "description": "Cas authentication strategies for Passport.",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:sadne/passport-cas.git"
+  },
+  "keywords": [
+    "passport",
+    "auth",
+    "cas"
+  ],
+  "author": "不会飞的羊",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sadne/passport-cas/issues"
+  },
+  "homepage": "https://github.com/sadne/passport-cas",
+  "dependencies": {
+    "passport": "~0.1.18"
+  }
+}
