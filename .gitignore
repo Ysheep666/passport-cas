@@ -1,9 +1,9 @@
-###Node###
-
+########################
+# node.js / npm
+########################
 lib-cov
 *.seed
 *.log
-*.csv
 *.dat
 *.out
 *.pid
@@ -13,5 +13,26 @@ pids
 logs
 results
 
-npm-debug.log
 node_modules
+
+npm-debug.log
+
+
+########################
+# misc / editors
+########################
+*~
+*#
+.DS_STORE
+.netbeans
+nbproject
+.idea
+
+
+########################
+# Test
+########################
+coverage.html
+
+
+
