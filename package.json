@@ -1,6 +1,6 @@
 {
   "name": "passport-cas",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Cas authentication strategies for Passport.",
   "main": "index.js",
   "scripts": {},

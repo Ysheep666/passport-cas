@@ -2,37 +2,47 @@
  * Cas
  */
 var url = require('url'),
-    http = require('http'),
-    https = require('https'),
-    passport = require('passport')
+  http = require('http'),
+  https = require('https'),
+  passport = require('passport')
 
-function Strategy(options, verify) {
-  if (typeof options == 'function') {
-    verify = options;
-    options = {};
+  function Strategy(options, verify) {
+    if (typeof options == 'function') {
+      verify = options;
+      options = {};
+    }
+    if (!verify) {
+      throw new Error('cas authentication strategy requires a verify function');
+    }
+
+    this.ssoBase = options.ssoBaseURL;
+    this.serverBaseURL = options.serverBaseURL;
+    this.parsed = url.parse(this.ssoBase);
+    if (this.parsed.protocol === 'http:') {
+      this.client = http;
+    } else {
+      this.client = https;
+    }
+
+    passport.Strategy.call(this);
+
+    this.name = 'cas';
+    this._verify = verify;
+    this._passReqToCallback = options.passReqToCallback;
   }
-  if (!verify) {
-    throw new Error('cas authentication strategy requires a verify function');
-  }
-
-  this.ssoBase = options.ssoBaseURL;
-  this.serverBaseURL = options.serverBaseURL;
-  this.parsed = url.parse(this.ssoBase);
-  if (this.parsed.protocol === 'http:') {
-    this.client = http;
-  } else {
-    this.client = https;
-  }
-
-  passport.Strategy.call(this);
-
-  this.name = 'cas';
-  this._verify = verify;
-  this._passReqToCallback = options.passReqToCallback;
-}
 
 Strategy.prototype.authenticate = function(req, options) {
   options = options || {};
+
+  // CAS Logout flow as described in
+  // https://wiki.jasig.org/display/CAS/Proposal%3A+Front-Channel+Single+Sign-Out var relayState = req.query.RelayState;
+  var relayState = req.query.RelayState;
+  if (relayState) {
+    // logout locally
+    req.logout();
+    return this.redirect(this.ssoBase + '/logout?_eventId=next&RelayState=' +
+      relayState);
+  }
 
   var ticket = req.param('ticket');
   if (!ticket) {
@@ -51,9 +61,13 @@ Strategy.prototype.authenticate = function(req, options) {
 
   var self = this;
 
-  var verified = function (err, user, info) {
-    if (err) { return self.error(err); }
-    if (!user) { return self.fail(info); }
+  var verified = function(err, user, info) {
+    if (err) {
+      return self.error(err);
+    }
+    if (!user) {
+      return self.fail(info);
+    }
     self.success(user, info);
   };
 
