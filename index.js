@@ -81,7 +81,8 @@ function Strategy(options, verify) {
                         return verified(new Error('Authentication failed'));
 
                     } catch (e) {
-                        return verified(new Error('Authentication failed ' + e));
+                        console.log(e);
+                        return verified(new Error('Authentication failed '));
                     }
                 });
             };
@@ -90,6 +91,14 @@ function Strategy(options, verify) {
             throw new Error('unsupported version ' + this.version);
     }
 }
+
+Strategy.prototype.service = function(req) {
+    var resolvedURL = url.resolve(this.serverBaseURL, req.url);
+    var parsedURL = url.parse(resolvedURL, true);
+    delete parsedURL.query.ticket;
+    delete parsedURL.search;
+    return url.format(parsedURL);
+};
 
 Strategy.prototype.authenticate = function (req, options) {
     options = options || {};
@@ -104,20 +113,21 @@ Strategy.prototype.authenticate = function (req, options) {
             relayState);
     }
 
+    var service = this.service(req);
+
     var ticket = req.param('ticket');
     if (!ticket) {
         var redirectURL = url.parse(this.ssoBase + '/login', true);
-        var service = this.serverBaseURL + req.url;
 
         redirectURL.query.service = service;
+        // copy loginParams in login query
+        for (var property in options.loginParams ) {
+            var loginParam = options.loginParams[property];
+            if (loginParam)
+                redirectURL.query[property] = loginParam;
+        }
         return this.redirect(url.format(redirectURL));
     }
-
-    var resolvedURL = url.resolve(this.serverBaseURL, req.url);
-    var parsedURL = url.parse(resolvedURL, true);
-    delete parsedURL.query.ticket;
-    delete parsedURL.search;
-    var validateService = url.format(parsedURL);
 
     var self = this;
     var verified = function (err, user, info) {
@@ -136,7 +146,7 @@ Strategy.prototype.authenticate = function (req, options) {
             pathname: this._validateUri,
             query: {
                 ticket: ticket,
-                service: validateService
+                service: service
             }
         })
     }, function (response) {
