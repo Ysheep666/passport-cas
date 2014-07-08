@@ -93,7 +93,7 @@ function Strategy(options, verify) {
 }
 
 Strategy.prototype.service = function(req) {
-    var resolvedURL = url.resolve(this.serverBaseURL, req.url);
+    var resolvedURL = url.resolve(this.serverBaseURL, req.originalUrl);
     var parsedURL = url.parse(resolvedURL, true);
     delete parsedURL.query.ticket;
     delete parsedURL.search;
