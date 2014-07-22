@@ -71,6 +71,31 @@ For example:
       })(req, res, next);
     };
 
+### CAS versions
+
+## CAS 3.0 configuration
+Since CAS3.0, the validation service returns a list of attributes for the authenticated user.
+Here is how you can use them:
+
+  passport.use(new (require('passport-cas').Strategy)({
+    version: 'CAS3.0',
+    ssoBaseURL: 'http://www.example.com/',
+    serverBaseURL: 'http://localhost:3000'
+  }, function(profile, done) {
+    var login = profile.user;
+
+    User.findOne({login: login}, function (err, user) {
+      if (err) {
+        return done(err);
+      }
+      if (!user) {
+        return done(null, false, {message: 'Unknown user'});
+      }
+      user.attributes = profile.attributes;
+      return done(null, user);
+    });
+  }));
+
 ## License
 
 [The MIT License](http://opensource.org/licenses/MIT)
