@@ -143,7 +143,7 @@ Strategy.prototype.authenticate = function (req, options) {
         host: this.parsed.hostname,
         port: this.parsed.port,
         path: url.format({
-            pathname: this._validateUri,
+            pathname: this.parsed.pathname + this._validateUri,
             query: {
                 ticket: ticket,
                 service: service
