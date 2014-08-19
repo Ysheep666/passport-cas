@@ -19,6 +19,8 @@ function Strategy(options, verify) {
     this.version = options.version || "CAS1.0"
     this.ssoBase = options.ssoBaseURL;
     this.serverBaseURL = options.serverBaseURL;
+    this.validateURL = options.validateURL;
+    this.serviceURL = options.serviceURL;
     this.parsed = url.parse(this.ssoBase);
     if (this.parsed.protocol === 'http:') {
         this.client = http;
@@ -57,7 +59,6 @@ function Strategy(options, verify) {
         case "CAS3.0":
             this._validateUri = "/p3/serviceValidate";
             this._validate = function (req, body, verified) {
-                console.log(body);
                 parseString(body, {
                     trim: true,
                     normalize: true,
@@ -93,7 +94,8 @@ function Strategy(options, verify) {
 }
 
 Strategy.prototype.service = function(req) {
-    var resolvedURL = url.resolve(this.serverBaseURL, req.originalUrl);
+    var serviceURL = this.serviceURL || req.originalUrl;
+    var resolvedURL = url.resolve(this.serverBaseURL, serviceURL);
     var parsedURL = url.parse(resolvedURL, true);
     delete parsedURL.query.ticket;
     delete parsedURL.search;
@@ -139,11 +141,12 @@ Strategy.prototype.authenticate = function (req, options) {
         }
         self.success(user, info);
     };
+    var _validateUri = this.validateURL || this._validateUri;
     var get = this.client.get({
         host: this.parsed.hostname,
         port: this.parsed.port,
         path: url.format({
-            pathname: this.parsed.pathname + this._validateUri,
+            pathname: this.parsed.pathname + _validateUri,
             query: {
                 ticket: ticket,
                 service: service
