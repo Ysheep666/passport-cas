@@ -96,6 +96,28 @@ Here is how you can use them:
       });
     }));
 
+## CAS 2.0 configuration
+CAS 2.0 will work with the CAS 3.0 configuration, but you need to set the validation endpoint.
+
+    passport.use(new (require('passport-cas').Strategy)({
+      version: 'CAS3.0',
+      ssoBaseURL: 'http://www.example.com/',
+      serverBaseURL: 'http://localhost:3000/cas',
+      validateURL: '/serviceValidate'
+    }, function(profile, done) {
+      var login = profile.user;
+    
+      User.findOne({login: login}, function (err, user) {
+        if (err) {
+          return done(err);
+        }
+        if (!user) {
+          return done(null, false, {message: 'Unknown user'});
+        }
+        return done(null, user);
+      });
+    }));
+
 ## License
 
 [The MIT License](http://opensource.org/licenses/MIT)
