@@ -1,12 +1,15 @@
 /**
  * Cas
  */
-var url = require('url'),
+var _ = require('underscore'),
+    url = require('url'),
     http = require('http'),
     https = require('https'),
     parseString = require('xml2js').parseString,
     processors = require('xml2js/lib/processors'),
-    passport = require('passport')
+    passport = require('passport'),
+    uuid = require('node-uuid'),
+    util = require('util');
 
 function Strategy(options, verify) {
     if (typeof options == 'function') {
@@ -16,11 +19,12 @@ function Strategy(options, verify) {
     if (!verify) {
         throw new Error('cas authentication strategy requires a verify function');
     }
-    this.version = options.version || "CAS1.0"
+    this.version = options.version || "CAS1.0";
     this.ssoBase = options.ssoBaseURL;
     this.serverBaseURL = options.serverBaseURL;
     this.validateURL = options.validateURL;
     this.serviceURL = options.serviceURL;
+    this.useSaml = options.useSaml || false;
     this.parsed = url.parse(this.ssoBase);
     if (this.parsed.protocol === 'http:') {
         this.client = http;
@@ -34,6 +38,13 @@ function Strategy(options, verify) {
     this.name = 'cas';
     this._verify = verify;
     this._passReqToCallback = options.passReqToCallback;
+
+    var xmlParseOpts = {
+        'trim': true,
+        'normalize': true,
+        'explicitArray': false,
+        'tagNameProcessors': [processors.normalize, processors.stripPrefix]
+    };
 
     var self = this;
     switch (this.version) {
@@ -57,36 +68,66 @@ function Strategy(options, verify) {
             };
             break;
         case "CAS3.0":
-            this._validateUri = "/p3/serviceValidate";
-            this._validate = function (req, body, verified) {
-                parseString(body, {
-                    trim: true,
-                    normalize: true,
-                    explicitArray: false,
-                    tagNameProcessors: [processors.normalize, processors.stripPrefix]
-                }, function (err, result) {
-                    if (err)
-                        return verified(new Error('The response from the server was bad'));
-                    try {
-                        if (result.serviceresponse.authenticationfailure)
-                            return verified(new Error('Authentication failed ' + result.serviceresponse.authenticationfailure.$.code));
-                        var success = result.serviceresponse.authenticationsuccess;
-                        if (success) {
-                            if (self._passReqToCallback) {
-                                self._verify(req, success, verified);
-                            } else {
-                                self._verify(success, verified);
-                            }
-                            return;
+            if (this.useSaml) {
+                this._validateUri = "/samlValidate";
+                this._validate = function (req, body, verified) {
+                    parseString(body, xmlParseOpts, function (err, result) {
+                        if (err) {
+                            return verified(new Error('The response from the server was bad'));
                         }
-                        return verified(new Error('Authentication failed'));
+                        try {
+                            var response = result.envelope.body.response;
+                            var success = response.status.statuscode['$'].Value.match(/Success$/);
+                            if (success) {
+                                var attributes = {};
+                                _.each(response.assertion.attributestatement.attribute, function(attribute) {
+                                    attributes[attribute['$'].AttributeName.toLowerCase()] = attribute.attributevalue;
+                                });
+                                var profile = {
+                                    'user': response.assertion.authenticationstatement.subject.nameidentifier,
+                                    'attributes': attributes
+                                };
+                                if (self._passReqToCallback) {
+                                    self._verify(req, profile, verified);
+                                } else {
+                                    self._verify(profile, verified);
+                                }
+                                return;
+                            }
+                            return verified(new Error('Authentication failed'));
+                        } catch (e) {
+                            return verified(new Error('Authentication failed'));
+                        }
+                    });
+                };
+            } else {
+                this._validateUri = "/p3/serviceValidate";
+                this._validate = function (req, body, verified) {
+                    parseString(body, xmlParseOpts, function (err, result) {
+                        if (err) {
+                            return verified(new Error('The response from the server was bad'));
+                        }
+                        try {
+                            if (result.serviceresponse.authenticationfailure) {
+                                return verified(new Error('Authentication failed ' + result.serviceresponse.authenticationfailure.$.code));
+                            }
+                            var success = result.serviceresponse.authenticationsuccess;
+                            if (success) {
+                                if (self._passReqToCallback) {
+                                    self._verify(req, success, verified);
+                                } else {
+                                    self._verify(success, verified);
+                                }
+                                return;
+                            }
+                            return verified(new Error('Authentication failed'));
 
-                    } catch (e) {
-                        console.log(e);
-                        return verified(new Error('Authentication failed '));
-                    }
-                });
-            };
+                        } catch (e) {
+                            return verified(new Error('Authentication failed'));
+                        }
+                    });
+                };
+            }
             break;
         default:
             throw new Error('unsupported version ' + this.version);
@@ -125,8 +166,9 @@ Strategy.prototype.authenticate = function (req, options) {
         // copy loginParams in login query
         for (var property in options.loginParams ) {
             var loginParam = options.loginParams[property];
-            if (loginParam)
+            if (loginParam) {
                 redirectURL.query[property] = loginParam;
+            }
         }
         return this.redirect(url.format(redirectURL));
     }
@@ -142,17 +184,8 @@ Strategy.prototype.authenticate = function (req, options) {
         self.success(user, info);
     };
     var _validateUri = this.validateURL || this._validateUri;
-    var get = this.client.get({
-        host: this.parsed.hostname,
-        port: this.parsed.port,
-        path: url.format({
-            pathname: this.parsed.pathname + _validateUri,
-            query: {
-                ticket: ticket,
-                service: service
-            }
-        })
-    }, function (response) {
+
+    var _handleResponse = function (response) {
         response.setEncoding('utf8');
         var body = '';
         response.on('data', function (chunk) {
@@ -161,11 +194,46 @@ Strategy.prototype.authenticate = function (req, options) {
         return response.on('end', function () {
             return self._validate(req, body, verified);
         });
-    });
+    };
 
-    get.on('error', function (e) {
-        return self.fail(new Error(e));
-    });
+    if (this.useSaml) {
+        var requestId = uuid.v4();
+        var issueInstant = new Date().toISOString();
+        var soapEnvelope = util.format('<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="%s" IssueInstant="%s"><samlp:AssertionArtifact>%s</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>', requestId, issueInstant, ticket);
+        var request = this.client.request({
+            host: this.parsed.hostname,
+            port: this.parsed.port,
+            method: 'POST',
+            path: url.format({
+                pathname: this.parsed.pathname + _validateUri,
+                query: {
+                    'TARGET': service
+                }
+            })
+        }, _handleResponse);
+
+        request.on('error', function (e) {
+            return self.fail(new Error(e));
+        });
+        request.write(soapEnvelope);
+        request.end();
+    } else {
+        var get = this.client.get({
+            host: this.parsed.hostname,
+            port: this.parsed.port,
+            path: url.format({
+                pathname: this.parsed.pathname + _validateUri,
+                query: {
+                    ticket: ticket,
+                    service: service
+                }
+            })
+        }, _handleResponse);
+
+        get.on('error', function (e) {
+            return self.fail(new Error(e));
+        });
+    }
 };
 
 

@@ -20,7 +20,9 @@
   },
   "homepage": "https://github.com/sadne/passport-cas",
   "dependencies": {
+    "node-uuid": "1.4.1",
     "passport": "~0.1.18",
+    "underscore": "1.6.0",
     "xml2js" : "0.4.4"
 
   }
