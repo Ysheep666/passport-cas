@@ -158,7 +158,7 @@ Strategy.prototype.authenticate = function (req, options) {
 
     var service = this.service(req);
 
-    var ticket = req.param('ticket');
+    var ticket = req.query.ticket;
     if (!ticket) {
         var redirectURL = url.parse(this.ssoBase + '/login', true);
 
