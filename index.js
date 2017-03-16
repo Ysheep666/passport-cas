@@ -8,7 +8,7 @@ var _ = require('underscore'),
     parseString = require('xml2js').parseString,
     processors = require('xml2js/lib/processors'),
     passport = require('passport'),
-    uuid = require('node-uuid'),
+    uuid = require('uuid/v4'),
     util = require('util');
 
 function Strategy(options, verify) {
