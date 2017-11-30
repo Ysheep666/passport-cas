@@ -157,10 +157,11 @@ Strategy.prototype.authenticate = function (req, options) {
     }
 
     var service = this.service(req);
+    var _validateUri = this.validateURL || this._validateUri;
 
     var ticket = req.param('ticket');
     if (!ticket) {
-        var redirectURL = url.parse(this.ssoBase + '/login', true);
+        var redirectURL = url.parse(this.ssoBase + _validateUri, true);
 
         redirectURL.query.service = service;
         // copy loginParams in login query
@@ -183,7 +184,6 @@ Strategy.prototype.authenticate = function (req, options) {
         }
         self.success(user, info);
     };
-    var _validateUri = this.validateURL || this._validateUri;
 
     var _handleResponse = function (response) {
         response.setEncoding('utf8');
