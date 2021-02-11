@@ -2,13 +2,12 @@
  * Cas
  */
 var _ = require('underscore'),
-    url = require('url'),
     http = require('http'),
     https = require('https'),
     parseString = require('xml2js').parseString,
     processors = require('xml2js/lib/processors'),
     passport = require('passport'),
-    uuid = require('node-uuid'),
+    uuid = require('uuid/v4'),
     util = require('util');
 
 function Strategy(options, verify) {
@@ -25,7 +24,7 @@ function Strategy(options, verify) {
     this.validateURL = options.validateURL;
     this.serviceURL = options.serviceURL;
     this.useSaml = options.useSaml || false;
-    this.parsed = url.parse(this.ssoBase);
+    this.parsed = new URL(this.ssoBase);
     if (this.parsed.protocol === 'http:') {
         this.client = http;
     } else {
@@ -80,7 +79,7 @@ function Strategy(options, verify) {
                             var success = response.status.statuscode['$'].Value.match(/Success$/);
                             if (success) {
                                 var attributes = {};
-                                _.each(response.assertion.attributestatement.attribute, function(attribute) {
+                                _.each(response.assertion.attributestatement.attribute, function (attribute) {
                                     attributes[attribute['$'].AttributeName.toLowerCase()] = attribute.attributevalue;
                                 });
                                 var profile = {
@@ -134,13 +133,11 @@ function Strategy(options, verify) {
     }
 }
 
-Strategy.prototype.service = function(req) {
+Strategy.prototype.service = function (req) {
     var serviceURL = this.serviceURL || req.originalUrl;
-    var resolvedURL = url.resolve(this.serverBaseURL, serviceURL);
-    var parsedURL = url.parse(resolvedURL, true);
-    delete parsedURL.query.ticket;
-    delete parsedURL.search;
-    return url.format(parsedURL);
+    var urlObject = new URL(serviceURL, this.serverBaseURL);
+    urlObject.searchParams.delete("ticket");
+    return urlObject.toString();
 };
 
 Strategy.prototype.authenticate = function (req, options) {
@@ -158,19 +155,19 @@ Strategy.prototype.authenticate = function (req, options) {
 
     var service = this.service(req);
 
-    var ticket = req.param('ticket');
+    var ticket = req.query.ticket;
     if (!ticket) {
-        var redirectURL = url.parse(this.ssoBase + '/login', true);
+        var redirectURL = new URL(this.ssoBase + '/login');
 
-        redirectURL.query.service = service;
+        redirectURL.searchParams.set("service", service);
         // copy loginParams in login query
-        for (var property in options.loginParams ) {
+        for (var property in options.loginParams) {
             var loginParam = options.loginParams[property];
             if (loginParam) {
-                redirectURL.query[property] = loginParam;
+                redirectURL.searchParams.set(property, loginParam);
             }
         }
-        return this.redirect(url.format(redirectURL));
+        return this.redirect(redirectURL.toString());
     }
 
     var self = this;
@@ -196,20 +193,14 @@ Strategy.prototype.authenticate = function (req, options) {
         });
     };
 
+    let target = new URL(_validateUri, this.parsed);
     if (this.useSaml) {
         var requestId = uuid.v4();
         var issueInstant = new Date().toISOString();
         var soapEnvelope = util.format('<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="%s" IssueInstant="%s"><samlp:AssertionArtifact>%s</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>', requestId, issueInstant, ticket);
-        var request = this.client.request({
-            host: this.parsed.hostname,
-            port: this.parsed.port,
+        target.searchParams.set("TARGET", service);
+        var request = this.client.request(target, {
             method: 'POST',
-            path: url.format({
-                pathname: this.parsed.pathname + _validateUri,
-                query: {
-                    'TARGET': service
-                }
-            })
         }, _handleResponse);
 
         request.on('error', function (e) {
@@ -218,19 +209,14 @@ Strategy.prototype.authenticate = function (req, options) {
         request.write(soapEnvelope);
         request.end();
     } else {
-        var get = this.client.get({
-            host: this.parsed.hostname,
-            port: this.parsed.port,
-            path: url.format({
-                pathname: this.parsed.pathname + _validateUri,
-                query: {
-                    ticket: ticket,
-                    service: service
-                }
-            })
-        }, _handleResponse);
+        target.searchParams.set("ticket", ticket);
+        target.searchParams.set("service", service);
+        var get = this.client.get(target, _handleResponse);
 
         get.on('error', function (e) {
+            if (e.errno == "EHOSTUNREACH") {
+                return self.fail(new Error(e), 504);
+            }
             return self.fail(new Error(e));
         });
     }
