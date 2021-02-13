@@ -1,14 +1,14 @@
 /**
  * Cas
  */
-var _ = require('underscore'),
-    http = require('http'),
-    https = require('https'),
-    parseString = require('xml2js').parseString,
-    processors = require('xml2js/lib/processors'),
-    passport = require('passport'),
-    uuid = require('uuid/v4'),
-    util = require('util');
+const _ = require('underscore'),
+      http = require('http'),
+      https = require('https'),
+      parseString = require('xml2js').parseString,
+      processors = require('xml2js/lib/processors'),
+      passport = require('passport'),
+      { v4: uuidv4 } = require('uuid'),
+      util = require('util');
 
 function Strategy(options, verify) {
     if (typeof options == 'function') {
